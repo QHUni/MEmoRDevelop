@@ -122,9 +122,15 @@ class AMER(BaseModel):
             '''
             问题
             1.prev_ms是什么？
-            2.N,L,D等参数的含义？可能和tf的代码有关？
+                prev_ms：previous memory state，初始为空
+            2.N,L,D等参数的含义？
+                N：transformer layer，就是一共有多少个transformer 层
+                Lt：应该是Time，Given a video V , with several temporally ordered event segments [e1, e2, ..., eT ]
+                D：应该就是 hidden dim了
             3.encoder前的concat操作在哪里？
-            4.transformerXL?对比模型
+                在embedding类里面
+            4.transformerXL?
+                对比模型
 
 
             note：
