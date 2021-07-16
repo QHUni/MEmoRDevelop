@@ -103,8 +103,8 @@ class BertLayerNorm(nn.Module):
         self.variance_epsilon = eps
 
     def forward(self, x):
-        u = x.mean(-1, keepdim=True)
-        s = (x - u).pow(2).mean(-1, keepdim=True)
+        u = x.mean(-1, keepdim=True) # x.mean(axis,keepdim=True)在axis方向取平均，运算完之后的维度和原来一样，原来是三维数组现在还是三维数组（不过某一维度变成了1）
+        s = (x - u).pow(2).mean(-1, keepdim=True) # x.pow(y):x的y次方
         x = (x - u) / torch.sqrt(s + self.variance_epsilon)
         return self.weight * x + self.bias
 
@@ -447,6 +447,9 @@ class BertEmbeddingsWithVideo(nn.Module):
         """add_postion_embeddings: whether to add absolute positional embeddings"""
         self.add_postion_embeddings = add_postion_embeddings
         self.word_embeddings = nn.Embedding(config.vocab_size, config.word_vec_size, padding_idx=0)
+        # qhy note for nn.embeddings
+        # nn.Embeddings(num_embeddings - 词嵌入字典大小，即一个字典里要有多少个词,embedding_dim - 每个词嵌入向量的大小)
+        # 通俗来讲就是将文字转换为一串数字表示,输入为词的只能是编号（LongTensor），输出为word embeddings
         self.word_fc = nn.Sequential(
             BertLayerNorm(config.word_vec_size, eps=config.layer_norm_eps),
             nn.Dropout(config.hidden_dropout_prob),
@@ -1375,7 +1378,7 @@ class RecursiveTransformer(nn.Module):
         Args:
             input_ids_list: [(N, L)] * step_size
             video_features_list: [(N, L, D_v)] * step_size
-            input_masks_list: [(N, L)] * step_size with 1 indicates valid bits
+            *input_masks_list: [(N, L)] * step_size with 1 indicates valid bits
             token_type_ids_list: [(N, L)] * step_size, with `0` on the first `max_v_len` bits, `1` on the last `max_t_len`
             input_labels_list: [(N, L)] * step_size, with `-1` on ignored positions,
                 will not be used when return_memory is True, thus can be None in this case

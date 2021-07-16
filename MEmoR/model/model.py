@@ -39,17 +39,21 @@ class AMER(BaseModel):
         D_p = config["personality"]["feature_dim"]
         
         self.attn = ScaledDotProductAttention((4 * D_e) ** 0.5, attn_dropout=0)
-
+        
         #qhy add
         #注意这里的config格式不一样
-        self.encoder = BertEncoderWithMemory(config)
+        # self.config_from_tf = config_from_tf
+        self.encoder = BertEncoderWithMemory(self.config_from_tf)
 
         self.enc_v = nn.Sequential(
             nn.Linear(D_v, D_e * 4),
             nn.ReLU(),
             nn.Linear(D_e * 4, D_e * 3),
             nn.ReLU(),
-            nn.Linear(D_e * 3, 2 * D_e),
+            nn.Linear(D_e * 3, 2 * D_e),# default D_e = 128
+            # qhy note
+            # nn.Linear(in_features,out_features,bias=True)
+            # D_v * 2 * D_e
         )
 
         self.enc_a = nn.Sequential(
@@ -82,9 +86,9 @@ class AMER(BaseModel):
         self.fusion_layer = nn.Linear(unified_d, 4 * D_e)
 
     def forward(self, U_v, U_a, U_t, U_p, M_v, M_a, M_t, seq_lengths, target_loc, seg_len, n_c):
-        # Encoders
+        # qhy note Encoders : 两层感知机，这一步要不要？
         V_e, A_e, T_e, P_e = self.enc_v(U_v), self.enc_a(U_a), self.enc_t(U_t), self.enc_p(U_p)
-
+        # feature大小*2*128 
         U_all = []
 
         for i in range(M_v.shape[0]):
@@ -96,31 +100,57 @@ class AMER(BaseModel):
                     break
             
             # 第1部分原始的特征变换
-            inp_V = V_e[i, : seq_lengths[i], :].reshape((n_c[i], seg_len[i], -1)).transpose(0, 1)
-            inp_T = T_e[i, : seq_lengths[i], :].reshape((n_c[i], seg_len[i], -1)).transpose(0, 1)
-            inp_A = A_e[i, : seq_lengths[i], :].reshape((n_c[i], seg_len[i], -1)).transpose(0, 1)
-            inp_P = P_e[i, : seq_lengths[i], :].reshape((n_c[i], seg_len[i], -1)).transpose(0, 1)
+            # qhy note : 也就是说前一步得到的feature全是三维数组
+            # qhy modified
+            inp_V = V_e[i, : seq_lengths[i], :].reshape((self.config_from_tf.num_hidden_layers, seg_len[i], -1)).transpose(0, 1)
+            inp_T = T_e[i, : seq_lengths[i], :].reshape((self.config_from_tf.num_hidden_layers, seg_len[i], -1)).transpose(0, 1)
+            inp_A = A_e[i, : seq_lengths[i], :].reshape((self.config_from_tf.num_hidden_layers, seg_len[i], -1)).transpose(0, 1)
+            inp_P = P_e[i, : seq_lengths[i], :].reshape((self.config_from_tf.num_hidden_layers, seg_len[i], -1)).transpose(0, 1)
 
-            # 随机mask掉一部分特征做推理
+            # qhy note : 随机mask掉一部分特征做推理
             mask_V = M_v[i, : seq_lengths[i]].reshape((n_c[i], seg_len[i])).transpose(0, 1)
             mask_T = M_t[i, : seq_lengths[i]].reshape((n_c[i], seg_len[i])).transpose(0, 1)
             mask_A = M_a[i, : seq_lengths[i]].reshape((n_c[i], seg_len[i])).transpose(0, 1)
 
 
             # qhy add from MART:encoder
-            # 参数1：prev_ms
-            prev_ms = [None] * self.config.num_hidden_layers
-            # 2:embeddings
-            self.embeddings = BertEmbeddingsWithVideo(config, add_postion_embeddings=True)
-            embeddings = self.embeddings(input_ids, video_features, token_type_ids)  # (N, L, D)
+            # 参数1：prev_ms（这个初始为空，可以不用管，把config改一下就行）
+            prev_ms_v = [None] * self.config_from_tf.num_hidden_layers
+            # 2:embeddings（不用管前面的处理，只要输入是embedding且大小为(N, L, D)即可）
+            # self.embeddings = BertEmbeddingsWithVideo(config, add_postion_embeddings=True)
+            # embeddings = self.embeddings(input_ids, video_features, token_type_ids)  # (N, L, D)
             # 3:input masks
-            input_masks_list = [e["input_mask"] for e in batched_data]  # input_masks_list: [(N, L)] * step_size with 1 indicates valid bits
-            
-            prev_ms, encoded_layer_outputs = self.encoder(
-            prev_ms, embeddings, input_masks, output_all_encoded_layers=False)  # both outputs are list
+            # input_mask: (N, L) with `1` indicates valid bits, `0` indicates pad
+            # *或许可以直接input_mask = torch.randn(2, 5)
+            # 调用路径：_load_indexed_video_feature得到mask（未完）
+            # 和输入内容和格式直接相关
+            # input_masks_list = [e["input_mask"] for e in batched_data]  # input_masks_list: [(N, L)] * step_size with 1 indicates valid bits
+            input_mask = torch.randn(2, seq_lengths[i])
+            prev_ms_v, tf_output_v = self.encoder(
+            prev_ms_v, inp_V, input_mask, output_all_encoded_layers=False)  # both outputs are list
+
+            prev_ms_t = [None] * self.config_from_tf.num_hidden_layers
+            prev_ms_t, tf_output_t = self.encoder(
+            prev_ms_t, inp_T, input_mask, output_all_encoded_layers=False)  # both outputs are list
+
+            prev_ms_a = [None] * self.config_from_tf.num_hidden_layers
+            prev_ms_a, tf_output_a = self.encoder(
+            prev_ms_a, inp_A, input_mask, output_all_encoded_layers=False)  # both outputs are list
 
             '''
-            问题
+            问题7.16
+            1.U_v、V_e,inp_v的含义？
+                原始的三种模态的feature和对应的mask
+            2.双层感知机要不要？感知机的输出shape？
+                要；
+            3.感知机输出为4*3*256，encoder要求的输入是(N, L, D)(2,seq_length,768)，如何转变？直接reshape？修改tf代码好像也不现实
+
+            '''
+
+
+
+            '''
+            问题7.14
             1.prev_ms是什么？
                 prev_ms：previous memory state，初始为空
             2.N,L,D等参数的含义？
@@ -145,11 +175,17 @@ class AMER(BaseModel):
 
 
             # Concat with personality embedding
-            inp_V = torch.cat([inp_V, inp_P], dim=2)
-            inp_A = torch.cat([inp_A, inp_P], dim=2)
-            inp_T = torch.cat([inp_T, inp_P], dim=2)
+            # qhy modified
+            inp_V = torch.cat([tf_output_v, inp_P], dim=2)
+            inp_A = torch.cat([tf_output_a, inp_P], dim=2)
+            inp_T = torch.cat([tf_output_t, inp_P], dim=2)
 
             U = []
+
+
+            # qhy add
+            # video和text的cross-attention
+            encoded_video_feat, x_encoded_video_feat, encoded_sub_feat, x_encoded_sub_feat = cross_encode_context(self, video_feat, video_mask, sub_feat, sub_mask)
 
             
             # 第2部分原始的cross-attention：两个循环

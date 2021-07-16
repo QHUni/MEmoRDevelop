@@ -605,6 +605,10 @@ def main():
         else:
             logger.info("Use recurrent model - Mine")
             model = RecursiveTransformer(rt_config)
+            '''
+            qhy note
+            参数传递方式：get_args()->opt->rt_config
+            '''
     else:  # single sentence, including untied
         if opt.untied:
             logger.info("Use untied non-recurrent single sentence model")
