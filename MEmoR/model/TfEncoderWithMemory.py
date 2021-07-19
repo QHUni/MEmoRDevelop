@@ -450,6 +450,9 @@ class BertEmbeddingsWithVideo(nn.Module):
         # qhy note for nn.embeddings
         # nn.Embeddings(num_embeddings - 词嵌入字典大小，即一个字典里要有多少个词,embedding_dim - 每个词嵌入向量的大小)
         # 通俗来讲就是将文字转换为一串数字表示,输入为词的只能是编号（LongTensor），输出为word embeddings
+        # nn.Embedding(10, 2)  # 10个词，每个词用2维词向量表示
+        # nn.Embedding具有一个权重（.weight），形状是(num_words, embedding_dim)。例如一共有10个词，每个词用2维向量表征，对应的权重就是一个10×2的矩阵。
+        # Embedding的输入形状N×W，N是batch size，W是序列的长度，输出的形状是N×W×embedding_dim(这里是300）。
         self.word_fc = nn.Sequential(
             BertLayerNorm(config.word_vec_size, eps=config.layer_norm_eps),
             nn.Dropout(config.hidden_dropout_prob),
