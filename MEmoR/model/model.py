@@ -187,6 +187,7 @@ class AMER(BaseModel):
 
         # 4.cross-attention之后的concat
         middle_total = torch.cat([x_encoded_video_text, x_encoded_video_audio], dim=2)
+        
 
         # 5.concat之后再放到decoder without memory 里
         input_mask_total = torch.randn(config["data_loader"]["args"]["batch_size"], D_a+D_v+D_t)
