@@ -178,15 +178,15 @@ class AMER(BaseModel):
         # def cross_context_encoder(self, main_context_feat, main_context_mask, side_context_feat, side_context_mask,
                               cross_att_layer, norm_layer, self_att_layer):
         # 仔细看图和函数，这个cross-attention分为main context和side_context,不是将两个融合为一个，而是将一个side融合进main里面，那么三个应该怎么融合呢？
-        x_encoded_video_feat = self.cross_context_encoder(
+        x_encoded_video_text = self.cross_context_encoder(
             encoded_video_feat, video_mask, encoded_text_feat, text_mask,
             self.video_cross_att, self.video_cross_layernorm, self.video_encoder2)  # (N, L, D)
-        x_encoded_text_feat = self.cross_context_encoder(
-            encoded_text_feat, text_mask, encoded_video_feat, video_mask,
-            self.sub_cross_att, self.sub_cross_layernorm, self.sub_encoder2)  # (N, L, D)
+        x_encoded_video_audio = self.cross_context_encoder(
+            encoded_video_feat, video_mask, encoded_audio_feat, audio_mask,
+            self.sub_cross_att, self.sub_cross_layernorm, self.video_encoder2)  # (N, L, D)
 
         # 4.cross-attention之后的concat
-        middle_total = torch.cat([x_encoded_text_feat, x_encoded_video_feat], dim=2)
+        middle_total = torch.cat([x_encoded_video_text, x_encoded_video_audio], dim=2)
 
         # 5.concat之后再放到decoder without memory 里
         input_mask_total = torch.randn(config["data_loader"]["args"]["batch_size"], D_a+D_v+D_t)
