@@ -6,6 +6,7 @@ import model.loss as module_loss
 import model.metric as module_metric
 from parse_config import ConfigParser
 from utils.util import create_model, create_dataloader, create_trainer
+from model.config_from_tf import get_args
 
 
 # fix random seeds for reproducibility
@@ -38,8 +39,11 @@ def main(config):
     trainer.train()
 
 
+
+
+
 if __name__ == '__main__':
-    args = argparse.ArgumentParser(description='Emotion Reasoning in Daily Life')
+    args = get_args()
     args.add_argument('-c', '--config', default='config.json', type=str,
                       help='config file path (default: None)')
     args.add_argument('-r', '--resume', default=None, type=str,

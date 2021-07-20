@@ -1,8 +1,11 @@
+from MEmoR.model.TfEncoderWithMemory import BertEncoderNoMemory
+from itertools import chain
 import torch.nn as nn
 import torch
 import torch.nn.functional as F
 from base import BaseModel
-from model.TfEncoderWithMemory import BertEncoderWithMemory
+from model.TfEncoderWithMemory import BertEncoderWithMemory BertEncoderNoMemory
+from model.model_xml import XML
 
 class ScaledDotProductAttention(nn.Module):
     """ Scaled Dot-Product Attention """
@@ -43,8 +46,11 @@ class AMER(BaseModel):
         #qhy add
         #注意这里的config格式不一样
         # self.config_from_tf = config_from_tf
-        self.encoder = BertEncoderWithMemory(self.config_from_tf)
-        self.encoder_no_mem = BertEncoderNoMemory(self.config_from_tf)
+        self.config = config
+        self.encoder = BertEncoderWithMemory(self.config)
+        self.encoder_no_mem = BertEncoderNoMemory(self.config)
+
+        self.xml = XML(self.config)
 
         self.enc_v = nn.Sequential(
             nn.Linear(D_v, D_e * 4),
@@ -110,7 +116,7 @@ class AMER(BaseModel):
         #1.三个模态的tf处理
         # qhy add from MART:encoder
         # 参数1：prev_ms（这个初始为空，可以不用管，把config改一下就行）
-        prev_ms_v = [None] * self.config_from_tf.num_hidden_layers
+        prev_ms_v = [None] * self.config.num_hidden_layers
         # 2:embeddings（不用管前面的处理，只要输入是embedding且大小为(N, L, D)即可）
         # self.embeddings = BertEmbeddingsWithVideo(config, add_postion_embeddings=True)
         # embeddings = self.embeddings(input_ids, video_features, token_type_ids)  # (N, L, D)
@@ -125,7 +131,7 @@ class AMER(BaseModel):
         prev_ms_v, V_e, input_mask_v, output_all_encoded_layers=False)  # both outputs are list
 
         input_mask_t = torch.randn(config["data_loader"]["args"]["batch_size"], D_a)
-        prev_ms_t = [None] * self.config_from_tf.num_hidden_layers
+        prev_ms_t = [None] * self.config.num_hidden_layers
         prev_ms_t, tf_output_t = self.encoder(
         prev_ms_t, T_e, input_mask_t, output_all_encoded_layers=False)  # both outputs are list
 
@@ -176,18 +182,18 @@ class AMER(BaseModel):
         # qhy add
         # 3.video和text的cross-attention
         # def cross_context_encoder(self, main_context_feat, main_context_mask, side_context_feat, side_context_mask,
-                              cross_att_layer, norm_layer, self_att_layer):
+        #                       cross_att_layer, norm_layer, self_att_layer):
         # 仔细看图和函数，这个cross-attention分为main context和side_context,不是将两个融合为一个，而是将一个side融合进main里面，那么三个应该怎么融合呢？
-        x_encoded_video_text = self.cross_context_encoder(
-            encoded_video_feat, video_mask, encoded_text_feat, text_mask,
-            self.video_cross_att, self.video_cross_layernorm, self.video_encoder2)  # (N, L, D)
-        x_encoded_video_audio = self.cross_context_encoder(
-            encoded_video_feat, video_mask, encoded_audio_feat, audio_mask,
-            self.sub_cross_att, self.sub_cross_layernorm, self.video_encoder2)  # (N, L, D)
+        x_encoded_video_text = self.xml.cross_context_encoder(
+            inp_V, video_mask, inp_T, text_mask,
+            self.xml.video_cross_att, self.xml.video_cross_layernorm, self.xml.video_encoder2)  # (N, L, D)
+        x_encoded_video_audio = self.xml.cross_context_encoder(
+            inp_V, video_mask, inp_A, audio_mask,
+            self.xml.sub_cross_att, self.xml.sub_cross_layernorm, self.xml.video_encoder2)  # (N, L, D)
 
         # 4.cross-attention之后的concat
         middle_total = torch.cat([x_encoded_video_text, x_encoded_video_audio], dim=2)
-        
+
 
         # 5.concat之后再放到decoder without memory 里
         input_mask_total = torch.randn(config["data_loader"]["args"]["batch_size"], D_a+D_v+D_t)
@@ -208,10 +214,10 @@ class AMER(BaseModel):
             # qhy note : 也就是说前一步得到的feature全是三维数组
             # qhy modified
             # inp_V = V_e[i, : seq_lengths[i], :].reshape((n_c[i], seg_len[i], -1)).transpose(0, 1)
-            inp_V = V_e[i, : seq_lengths[i], :].reshape((self.config_from_tf.num_hidden_layers, seg_len[i], -1)).transpose(0, 1)
-            inp_T = T_e[i, : seq_lengths[i], :].reshape((self.config_from_tf.num_hidden_layers, seg_len[i], -1)).transpose(0, 1)
-            inp_A = A_e[i, : seq_lengths[i], :].reshape((self.config_from_tf.num_hidden_layers, seg_len[i], -1)).transpose(0, 1)
-            inp_P = P_e[i, : seq_lengths[i], :].reshape((self.config_from_tf.num_hidden_layers, seg_len[i], -1)).transpose(0, 1)
+            inp_V = V_e[i, : seq_lengths[i], :].reshape((self.config.num_hidden_layers, seg_len[i], -1)).transpose(0, 1)
+            inp_T = T_e[i, : seq_lengths[i], :].reshape((self.config.num_hidden_layers, seg_len[i], -1)).transpose(0, 1)
+            inp_A = A_e[i, : seq_lengths[i], :].reshape((self.config.num_hidden_layers, seg_len[i], -1)).transpose(0, 1)
+            inp_P = P_e[i, : seq_lengths[i], :].reshape((self.config.num_hidden_layers, seg_len[i], -1)).transpose(0, 1)
 
             # qhy note : 随机mask掉一部分特征做推理
             mask_V = M_v[i, : seq_lengths[i]].reshape((n_c[i], seg_len[i])).transpose(0, 1)
