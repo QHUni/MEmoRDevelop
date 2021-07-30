@@ -53,7 +53,7 @@ class VisualFeatureExtractor(BaseFeatureExtractor):
                         ret_in.append(torch.mean(torch.stack(character_face_feature), dim=0))
                         ret_in.append(torch.mean(obj_features[begin_idx:end_idx, :], dim=0))
                         ret_in.append(torch.mean(env_features[begin_idx:end_idx, :], dim=0))
-                        # print(torch.cat(ret_in).shape)
+                        print(torch.cat(ret_in).shape)
                         ret.append(torch.cat(ret_in))
                         ret_valid.append(1)
                     else:
@@ -66,3 +66,9 @@ class VisualFeatureExtractor(BaseFeatureExtractor):
             return torch.zeros((len(on_characters) * len(seg_start), self.feature_dim)), torch.zeros(len(on_characters) * len(seg_start), dtype=torch.int8)
 
 
+
+if __name__ == '__main__':
+    vfe = VisualFeatureExtractor(config)
+    vf, v_valid = vfe.get_feature(anno['clip'], target_character)
+    print("ret shape ...",len(ret))
+    print("ret_valid shape ...", len(ret_valid))
